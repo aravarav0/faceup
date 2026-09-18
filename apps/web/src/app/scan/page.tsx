@@ -1,0 +1,399 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import type { Gate } from "@freeharmony/engine";
+import { runScan, type ScanOutcome } from "@/lib/scan";
+import { getLandmarker } from "@/lib/landmarker";
+import { loadProfile, newScanId, saveScan } from "@/lib/store";
+import { ScanSequence } from "@/components/ScanSequence";
+
+type Status =
+  | { kind: "idle" }
+  | { kind: "starting-camera" }
+  | { kind: "camera-ready" }
+  | { kind: "camera-error"; message: string }
+  | { kind: "analyzing" }
+  | { kind: "sequence"; outcome: ScanOutcome; id: string }
+  | { kind: "gate-failed"; gates: Gate[] }
+  | { kind: "upload-error"; message: string };
+
+type ModelStatus = "loading" | "ready" | "error";
+
+export default function ScanPage() {
+  const router = useRouter();
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [status, setStatus] = useState<Status>({ kind: "idle" });
+  const [modelStatus, setModelStatus] = useState<ModelStatus>("loading");
+  const [modelErrorMsg, setModelErrorMsg] = useState<string | null>(null);
+  const [camLive, setCamLive] = useState(false);
+
+  // Warm the landmarker while the user positions themselves. Named error +
+  // a Retry button here, instead of leaving the Capture button reading
+  // "Loading model…" forever, is the whole fix for silent stalls (bad
+  // network mid-download, a device that can't init the GPU/CPU wasm
+  // delegate at all).
+  const loadModel = useCallback(() => {
+    setModelStatus("loading");
+    setModelErrorMsg(null);
+    let cancelled = false;
+    getLandmarker()
+      .then(() => {
+        if (!cancelled) setModelStatus("ready");
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setModelStatus("error");
+        const message = err instanceof Error ? err.message : String(err);
+        setModelErrorMsg(
+          /fetch|network|load|abort/i.test(message)
+            ? "Face model failed to download. Check your connection and retry."
+            : "Face model failed to load on this device.",
+        );
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => loadModel(), [loadModel]);
+
+  const stopCamera = useCallback(() => {
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    setCamLive(false);
+  }, []);
+
+  useEffect(() => stopCamera, [stopCamera]);
+
+  const startCamera = useCallback(async () => {
+    setStatus({ kind: "starting-camera" });
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: "user",
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+        },
+        audio: false,
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+      setCamLive(true);
+      setStatus({ kind: "camera-ready" });
+    } catch {
+      setStatus({
+        kind: "camera-error",
+        message:
+          "Camera access was blocked. You can allow it in your browser's site settings, or upload a photo instead.",
+      });
+    }
+  }, []);
+
+  const analyzeCanvas = useCallback(
+    async (canvas: HTMLCanvasElement) => {
+      setStatus({ kind: "analyzing" });
+      // Landmark detection blocks the main thread for a beat; yield two
+      // frames so the "Measuring…" state actually PAINTS before the work
+      // starts — otherwise the tap feels dead.
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      try {
+        const profile = loadProfile();
+        const { result, photo, input } = await runScan(
+          { canvas, mirrored: false },
+          profile.sex,
+        );
+        if (!result.ok) {
+          setStatus({ kind: "gate-failed", gates: result.gates.blocking });
+          return;
+        }
+        const id = newScanId();
+        saveScan({ id, createdAt: Date.now(), result, photo, input: input ?? undefined });
+        stopCamera();
+        // The math is done — now stage the reveal.
+        setStatus({ kind: "sequence", outcome: { result, photo, input }, id });
+      } catch (err) {
+        const raw = err instanceof Error ? err.message : "unknown error";
+        setStatus({
+          kind: "upload-error",
+          message: /fetch|network|load|abort/i.test(raw)
+            ? "The face model couldn't download. Check your connection and retry."
+            : `Couldn't analyze this photo. ${raw}`,
+        });
+      }
+    },
+    [router, stopCamera],
+  );
+
+  const capture = useCallback(() => {
+    const video = videoRef.current;
+    if (!video || video.videoWidth === 0) return;
+    // Draw the RAW (unmirrored) camera pixels; only the preview is mirrored.
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext("2d")!.drawImage(video, 0, 0);
+    void analyzeCanvas(canvas);
+  }, [analyzeCanvas]);
+
+  const onUpload = useCallback(
+    async (file: File) => {
+      try {
+        const bitmap = await createImageBitmap(file);
+        const canvas = document.createElement("canvas");
+        canvas.width = bitmap.width;
+        canvas.height = bitmap.height;
+        canvas.getContext("2d")!.drawImage(bitmap, 0, 0);
+        bitmap.close();
+        await analyzeCanvas(canvas);
+      } catch (err) {
+        const raw = err instanceof Error ? err.message : String(err);
+        const heic = /heic|heif/i.test(file.type) || /\.hei[cf]$/i.test(file.name);
+        setStatus({
+          kind: "upload-error",
+          message: heic
+            ? "This iPhone format (HEIC) couldn't be read in the browser. Open it in Photos and export as JPEG, then try again."
+            : /decode|corrupt|type|bitmap|unsupported/i.test(raw)
+              ? "That file couldn't be opened as a photo. Try a JPEG or PNG."
+              : `Couldn't use this photo. ${raw}`,
+        });
+      }
+    },
+    [analyzeCanvas],
+  );
+
+  const dismissNotice = useCallback(() => {
+    setStatus(camLive ? { kind: "camera-ready" } : { kind: "idle" });
+  }, [camLive]);
+
+  const cameraOn = camLive && (status.kind === "camera-ready" || status.kind === "analyzing");
+
+  if (status.kind === "sequence") {
+    return (
+      <ScanSequence
+        photo={status.outcome.photo}
+        landmarks={status.outcome.input?.landmarks ?? []}
+        result={status.outcome.result}
+        onDone={() => router.push(`/results/${status.id}`)}
+      />
+    );
+  }
+
+  return (
+    <main className="mx-auto w-full max-w-xl px-5 py-6 flex flex-col gap-5">
+      <header className="flex items-center justify-between">
+        <Link href="/" className="text-ink-2 hover:text-ink text-sm">
+          ← Back
+        </Link>
+        <span className="label-caps">Face Scan</span>
+        <span className="w-12" />
+      </header>
+
+      {modelStatus === "error" && (
+        <div className="card border-work/40 p-4 flex items-center justify-between gap-3">
+          <p className="text-sm text-work">{modelErrorMsg}</p>
+          <button
+            onClick={loadModel}
+            className="shrink-0 text-sm text-gold underline underline-offset-4"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
+      <div className="card relative overflow-hidden aspect-[4/5]">
+        <video
+          ref={videoRef}
+          playsInline
+          muted
+          className="absolute inset-0 h-full w-full object-cover -scale-x-100"
+          style={{ display: cameraOn ? "block" : "none" }}
+        />
+        {cameraOn && <GoldenGuide />}
+        {!cameraOn && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 p-8 text-center">
+            {status.kind === "camera-error" ? (
+              <p className="text-sm text-work">{status.message}</p>
+            ) : (
+              <>
+                <p className="font-display text-2xl">Ready to measure?</p>
+                <p className="text-sm text-ink-2">
+                  Look at the camera, neutral expression, even light. A laptop
+                  cam a bit below your eyes is fine — you do not need to tip
+                  your chin up.
+                </p>
+              </>
+            )}
+            <button
+              onClick={() => void startCamera()}
+              className="gold-gradient rounded-full px-8 py-3 text-sm font-semibold tracking-[0.15em] uppercase"
+              disabled={status.kind === "starting-camera"}
+            >
+              {status.kind === "starting-camera" ? "Starting…" : "Start Camera"}
+            </button>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={status.kind === "analyzing"}
+              className="text-sm text-gold underline underline-offset-4 disabled:opacity-50"
+            >
+              or upload a photo
+            </button>
+          </div>
+        )}
+        {status.kind === "analyzing" && (
+          <div className="absolute inset-0 bg-bg/70 flex items-center justify-center z-10">
+            <p className="label-caps animate-pulse">Measuring…</p>
+          </div>
+        )}
+      </div>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          e.target.value = "";
+          if (f) void onUpload(f);
+        }}
+      />
+
+      {cameraOn && (
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={status.kind === "analyzing"}
+          className="text-center text-sm text-gold underline underline-offset-4 disabled:opacity-50"
+        >
+          or upload a photo instead
+        </button>
+      )}
+
+      {(status.kind === "gate-failed" || status.kind === "upload-error") && (
+        <PhotoNotice
+          title={
+            status.kind === "gate-failed"
+              ? "Photo not suitable"
+              : "Couldn't use this photo"
+          }
+          gates={status.kind === "gate-failed" ? status.gates : undefined}
+          message={status.kind === "upload-error" ? status.message : undefined}
+          onDismiss={dismissNotice}
+          onRetry={() => fileInputRef.current?.click()}
+        />
+      )}
+
+      {cameraOn && (
+        <button
+          onClick={capture}
+          disabled={modelStatus !== "ready" || status.kind === "analyzing"}
+          className="gold-gradient btn-press rounded-full py-4 text-sm font-semibold tracking-[0.15em] uppercase disabled:opacity-60"
+        >
+          {status.kind === "analyzing" ? (
+            <span className="inline-flex items-center gap-2">
+              <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-on-gold/30 border-t-on-gold" />
+              Measuring…
+            </span>
+          ) : modelStatus === "ready" ? (
+            "Capture"
+          ) : modelStatus === "error" ? (
+            "Model unavailable"
+          ) : (
+            "Loading model…"
+          )}
+        </button>
+      )}
+
+      <p className="text-center text-xs text-ink-3">
+        Photos are processed entirely in your browser and stored only on this
+        device.
+      </p>
+    </main>
+  );
+}
+
+function PhotoNotice({
+  title,
+  gates,
+  message,
+  onDismiss,
+  onRetry,
+}: {
+  title: string;
+  gates?: Gate[];
+  message?: string;
+  onDismiss: () => void;
+  onRetry: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-bg/80 px-5"
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="photo-notice-title"
+    >
+      <div className="card border-work/40 w-full max-w-md p-6 flex flex-col gap-4">
+        <p id="photo-notice-title" className="label-caps text-work">
+          {title}
+        </p>
+        {gates?.map((g) => (
+          <div key={g.code}>
+            <p className="text-sm">{g.message}</p>
+            <p className="text-sm text-ink-2">{g.retake}</p>
+          </div>
+        ))}
+        {message && <p className="text-sm">{message}</p>}
+        {(!gates || gates.length === 0) && !message && (
+          <p className="text-sm">This photo couldn&apos;t be measured.</p>
+        )}
+        <p className="text-xs text-ink-3">
+          Use a clear, straight-on photo — face the camera, even light, no
+          heavy turn or chin-down pose.
+        </p>
+        <div className="flex flex-col gap-2 pt-1">
+          <button
+            type="button"
+            onClick={onRetry}
+            className="gold-gradient rounded-full py-3 text-sm font-semibold tracking-[0.15em] uppercase"
+          >
+            Try another photo
+          </button>
+          <button
+            type="button"
+            onClick={onDismiss}
+            className="text-sm text-ink-2 underline underline-offset-4 py-2"
+          >
+            Dismiss
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Golden-ratio positioning guide drawn over the live preview. */
+function GoldenGuide() {
+  return (
+    <svg
+      viewBox="0 0 100 125"
+      className="absolute inset-0 h-full w-full opacity-40 pointer-events-none"
+      preserveAspectRatio="none"
+    >
+      <g stroke="#ead0a4" strokeWidth="0.3" fill="none">
+        <ellipse cx="50" cy="58" rx="24" ry="34" />
+        <line x1="50" y1="10" x2="50" y2="115" />
+        <line x1="26" y1="45" x2="74" y2="45" />
+        <line x1="26" y1="70" x2="74" y2="70" />
+        <line x1="26" y1="88" x2="74" y2="88" />
+      </g>
+    </svg>
+  );
+}
