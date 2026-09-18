@@ -1,4 +1,4 @@
-import type { MetricKey, MetricResult } from "@freeharmony/engine";
+import { isOpenLowBrow, type MetricKey, type MetricResult } from "@freeharmony/engine";
 
 export interface FlawItem {
   key: MetricKey;
@@ -135,10 +135,16 @@ export function describeFlaw(m: MetricResult): { headline: string; detail: strin
         detail: "The jaw edge doesn't read as a clear line from ear to chin.",
       };
     case "browPosition":
-      return pair(high,
-        ["Brows sit high", "There's a large gap between your brows and eyes."],
-        ["Brows sit low", "Your brows sit close to the eyes."],
-      );
+      if (!high) {
+        return {
+          headline: "Natural brow height",
+          detail: "Brows close to the eyes are counted as ideal.",
+        };
+      }
+      return {
+        headline: "Brows sit high",
+        detail: "There's a large gap between your brows and eyes.",
+      };
     default:
       return {
         headline: m.label,
@@ -260,10 +266,15 @@ function describeStrength(m: MetricResult): { headline: string; detail: string }
         detail: "The jaw edge reads as a distinct line from ear to chin.",
       };
     case "browPosition":
-      return {
-        headline: "Natural brow height",
-        detail: "The brows sit a natural distance above the eyes.",
-      };
+      return m.value < m.band.lo
+        ? {
+            headline: "Brows sit close to the eyes",
+            detail: "That's counted as ideal — same as sitting in the usual range.",
+          }
+        : {
+            headline: "Natural brow height",
+            detail: "The brows sit a natural distance above the eyes.",
+          };
     default:
       return {
         headline: m.label,
@@ -306,9 +317,7 @@ export function populationStanding(percentile: number): {
 export function rankFlaws(metrics: MetricResult[]): FlawItem[] {
   return metrics
     .filter((m) => m.score < SCORE_CUTOFF)
-    // Low-set brows (hunter-eye / orbital-rim) are not a gap — only a large
-    // lid show (high brows) is.
-    .filter((m) => !(m.key === "browPosition" && m.value < m.band.lo))
+    .filter((m) => !isOpenLowBrow(m.key, m.value, m.band))
     .slice()
     .sort((a, b) => a.score - b.score || a.label.localeCompare(b.label))
     .slice(0, MAX_FLAWS)

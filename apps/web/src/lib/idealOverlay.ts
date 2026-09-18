@@ -1,4 +1,4 @@
-import { LANDMARKS, TRICHION_K } from "@freeharmony/engine";
+import { isOpenLowBrow, LANDMARKS, TRICHION_K } from "@freeharmony/engine";
 import type { MetricKey, MetricResult } from "@freeharmony/engine";
 
 export type XY = { x: number; y: number };
@@ -134,6 +134,7 @@ export function idealPointsForMetric(
   aspect: number,
 ): Record<number, XY> {
   if (!(aspect > 0) || metric.score >= 100) return {};
+  if (isOpenLowBrow(metric.key, metric.value, metric.band)) return {};
   const target = bandMid(metric);
   const out: Record<number, XY> = {};
 

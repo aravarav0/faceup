@@ -21,17 +21,21 @@ export function subScore(v: number, b: Band): number {
   return 100 * Math.exp(-LN2 * Math.pow(d, CURVE_P));
 }
 
+/** Brows closer to the eyes than the band floor count as in-band ideal. */
+export function isOpenLowBrow(key: string, value: number, band: Band): boolean {
+  return key === "browPosition" && value < band.lo;
+}
+
 /**
- * Same as subScore, except a brow-to-lid gap *below* the band is not a miss.
- * That's the male-model / hunter-eye look (brows on the orbital rim). High
- * brows still fall off — a large lid show is the actual problem.
+ * Same as subScore, except a brow-to-lid gap *below* the band is scored as
+ * a perfect 100 — same as sitting inside the band. High brows still fall off.
  */
 export function scoreAgainstBand(
   key: string,
   v: number,
   b: Band,
 ): number {
-  if (key === "browPosition" && v < b.lo) return 100;
+  if (isOpenLowBrow(key, v, b)) return 100;
   return round1(subScore(v, b));
 }
 

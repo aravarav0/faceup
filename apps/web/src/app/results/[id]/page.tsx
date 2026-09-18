@@ -151,6 +151,12 @@ export default function ResultsPage({ params }: { params: Promise<{ id: string }
   const photoBox = photoAspect ? cropBoxAspect(photoCrop, photoAspect) : null;
   const idealGhosts = useMemo(() => {
     if (!selectedMetric || !photoAspect || selectedMetric.score >= 100) return {};
+    if (
+      selectedMetric.key === "browPosition" &&
+      selectedMetric.value < selectedMetric.band.lo
+    ) {
+      return {};
+    }
     return idealPointsForMetric(selected, mergedLandmarks, selectedMetric, photoAspect);
   }, [selected, selectedMetric, mergedLandmarks, photoAspect]);
   const hasIdealGhosts = Object.keys(idealGhosts).length > 0;
@@ -780,6 +786,8 @@ function formatValue(m: MetricResult): string {
 function bandText(m: MetricResult): string {
   const fmt = (v: number) =>
     m.unit === "deg" ? `${v}°` : m.unit === "index" ? `${v}` : v.toFixed(m.value >= 10 ? 0 : 3).replace(/0+$/, "").replace(/\.$/, "");
+  // Low-set brows are in-band, so the floor is open: anything at or below hi is ideal.
+  if (m.key === "browPosition") return `≤ ${fmt(m.band.hi)}`;
   return `${fmt(m.band.lo)} – ${fmt(m.band.hi)}`;
 }
 

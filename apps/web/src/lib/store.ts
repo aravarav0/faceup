@@ -6,6 +6,7 @@ import type {
   ScanResult,
   Sex,
 } from "@freeharmony/engine";
+import { applyLowBrowIdeal } from "@freeharmony/engine";
 import type { StoredInput } from "./scan";
 
 // All persistence is localStorage — nothing ever leaves the device unless the
@@ -103,7 +104,12 @@ export function loadScans(): StoredScan[] {
   if (typeof window === "undefined") return [];
   try {
     const raw = localStorage.getItem(SCANS_KEY);
-    if (raw) return JSON.parse(raw) as StoredScan[];
+    if (raw) {
+      return (JSON.parse(raw) as StoredScan[]).map((s) => ({
+        ...s,
+        result: applyLowBrowIdeal(s.result),
+      }));
+    }
   } catch {
     // corrupted store — treat as empty rather than crash
   }

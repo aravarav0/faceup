@@ -9,7 +9,7 @@ import { buildFrame } from "./normalize";
 import { runGates } from "./gates/index";
 import { METRICS } from "./metrics/registry";
 import { resolveBand } from "./scoring/bands";
-import { scoreAgainstBand, verdictOf } from "./scoring/curve";
+import { isOpenLowBrow, scoreAgainstBand, verdictOf } from "./scoring/curve";
 import { aggregate } from "./scoring/aggregate";
 import {
   overallPercentileOf,
@@ -173,13 +173,56 @@ export function analyze(input: ScanInput): ScanResult {
   };
 }
 
+/**
+ * Older scans scored low-set brows as a miss. Re-rate those rows as ideal and
+ * rebuild the rollup so the overall number matches a fresh scan.
+ */
+export function applyLowBrowIdeal(result: ScanResult): ScanResult {
+  if (!result.ok || result.metrics.length === 0) return result;
+  let changed = false;
+  const metrics = result.metrics.map((m) => {
+    if (!isOpenLowBrow(m.key, m.value, m.band)) return m;
+    if (m.score === 100 && m.verdict === "ideal") return m;
+    changed = true;
+    return { ...m, score: 100, verdict: "ideal" as const };
+  });
+  if (!changed) return result;
+
+  const weights: Record<string, { area: AreaKey; weight: number }> = {};
+  for (const def of METRICS) {
+    weights[def.key] = { area: def.area, weight: def.weight };
+  }
+  const agg = aggregate(metrics, weights);
+  return {
+    ...result,
+    metrics,
+    areas: agg.areas,
+    overall: agg.overall,
+    overallPercentile:
+      agg.overall !== null && result.bandProfile === "calibrated"
+        ? overallPercentileOf(agg.overall)
+        : result.overallPercentile,
+    standardized:
+      agg.overall !== null && result.bandProfile === "calibrated"
+        ? standardizedOverall(agg.overall)
+        : result.standardized,
+    tier: agg.tier,
+  };
+}
+
 // Public surface
 export * from "./types";
 export { buildFrame } from "./normalize";
 export { runGates, eyeAspectRatio } from "./gates/index";
 export { METRICS, TRICHION_K, computeJawEdgeSupport } from "./metrics/registry";
 export { BANDS, resolveBand } from "./scoring/bands";
-export { subScore, scoreAgainstBand, verdictOf, round1 } from "./scoring/curve";
+export {
+  subScore,
+  scoreAgainstBand,
+  isOpenLowBrow,
+  verdictOf,
+  round1,
+} from "./scoring/curve";
 export {
   percentileOf,
   overallPercentileOf,

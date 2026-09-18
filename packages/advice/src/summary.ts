@@ -71,8 +71,8 @@ const MEANINGS: Record<string, { good: string; weak: string }> = {
     weak: "your jawline border reads soft — leanness, posture, and lighting are the levers",
   },
   browPosition: {
-    good: "your brows sit at a strong height relative to your eyes",
-    weak: "your brow height sits outside the reference band for your setting",
+    good: "your brows sit close to the eyes, which is counted as ideal",
+    weak: "there's a large gap between your brows and eyes",
   },
 };
 

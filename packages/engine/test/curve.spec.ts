@@ -101,9 +101,10 @@ describe("neutral band is the union of dimorphic bands", () => {
 });
 
 describe("scoreAgainstBand browPosition", () => {
-  it("does not penalize brows closer to the eyes than the band floor", () => {
+  it("treats brows closer to the eyes than the band floor as ideal", () => {
     const band = resolveBand(BANDS.browPosition["faceharmony-parity"], "masculine");
     expect(scoreAgainstBand("browPosition", 0.08, band)).toBe(100);
+    expect(verdictOf(scoreAgainstBand("browPosition", 0.08, band))).toBe("ideal");
     expect(scoreAgainstBand("browPosition", band.lo, band)).toBe(100);
     expect(scoreAgainstBand("browPosition", (band.lo + band.hi) / 2, band)).toBe(100);
   });
@@ -111,5 +112,65 @@ describe("scoreAgainstBand browPosition", () => {
   it("still penalizes a large gap above the eyes", () => {
     const band = resolveBand(BANDS.browPosition["faceharmony-parity"], "masculine");
     expect(scoreAgainstBand("browPosition", band.hi + 0.08, band)).toBeLessThan(90);
+    expect(verdictOf(scoreAgainstBand("browPosition", band.hi + 0.08, band))).not.toBe("ideal");
+  });
+});
+
+describe("applyLowBrowIdeal", () => {
+  it("rebuilds overall so a stored low-brow miss no longer pulls the score down", async () => {
+    const { applyLowBrowIdeal } = await import("../src/index");
+    const brow = {
+      key: "browPosition" as const,
+      label: "Brow position",
+      value: 0.08,
+      unit: "ratio" as const,
+      band: { lo: 0.2, hi: 0.28 },
+      score: 4,
+      verdict: "needs-work" as const,
+      confidence: 1,
+      flags: [],
+      percentile: 5,
+    };
+    const other = {
+      key: "canthalTilt" as const,
+      label: "Canthal tilt",
+      value: 5,
+      unit: "deg" as const,
+      band: { lo: 4, hi: 8 },
+      score: 100,
+      verdict: "ideal" as const,
+      confidence: 1,
+      flags: [],
+      percentile: 50,
+    };
+    const patched = applyLowBrowIdeal({
+      ok: true,
+      gates: {
+        pass: true,
+        blocking: [],
+        warnings: [],
+        confidenceMultiplier: 1,
+        regionConfidence: {},
+        jawEdgeSupport: null,
+      },
+      frame: null,
+      metrics: [brow, other],
+      areas: {
+        symmetry: { score: 100, confidence: 1 },
+        eyeArea: { score: 50, confidence: 1 },
+        midface: { score: 100, confidence: 1 },
+        jawline: { score: 100, confidence: 1 },
+      },
+      overall: 80,
+      overallPercentile: 40,
+      standardized: null,
+      tier: "good",
+      engineVersion: "0.1.0",
+      bandProfile: "faceharmony-parity",
+      sex: "masculine",
+    });
+    const row = patched.metrics.find((m) => m.key === "browPosition")!;
+    expect(row.score).toBe(100);
+    expect(row.verdict).toBe("ideal");
   });
 });
