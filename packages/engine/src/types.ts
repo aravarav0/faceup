@@ -37,6 +37,11 @@ export interface ScanInput {
    * already passed.
    */
   reanalyze?: boolean;
+  /**
+   * Score even when pose, lighting, blur, or expression would normally refuse.
+   * Still requires a detected face. Numbers are a rougher read.
+   */
+  force?: boolean;
   sex?: Sex;
   bandProfile?: BandProfile;
 }
@@ -193,4 +198,6 @@ export interface ScanResult {
   engineVersion: string;
   bandProfile: BandProfile;
   sex: Sex;
+  /** True when the user overrode quality gates to get a score anyway. */
+  forced?: boolean;
 }

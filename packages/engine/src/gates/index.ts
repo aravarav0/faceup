@@ -326,6 +326,22 @@ export function runGates(input: ScanInput, frame: Frame): GateReport {
     }
   }
 
+  // Jaw edge already never blocks.
+
+  if (input.force && blocking.length > 0) {
+    for (const g of blocking) {
+      warnings.push({ ...g, severity: "warn" });
+      confidenceMultiplier *= 0.75;
+      const occ = /^occlusion-(eyes|nose|mouth|jaw|brow)$/.exec(g.code);
+      if (occ) {
+        const region = occ[1] as FaceRegion;
+        regionConfidence[region] = Math.min(regionConfidence[region] ?? 1, 0.4);
+      }
+    }
+    blocking.length = 0;
+    confidenceMultiplier = Math.max(0.28, confidenceMultiplier);
+  }
+
   return {
     pass: blocking.length === 0,
     blocking,

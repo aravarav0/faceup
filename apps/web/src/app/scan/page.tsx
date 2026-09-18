@@ -16,7 +16,7 @@ type Status =
   | { kind: "camera-error"; message: string }
   | { kind: "analyzing" }
   | { kind: "sequence"; outcome: ScanOutcome; id: string }
-  | { kind: "gate-failed"; gates: Gate[] }
+  | { kind: "gate-failed"; gates: Gate[]; alreadyForced?: boolean }
   | { kind: "upload-error"; message: string };
 
 type ModelStatus = "loading" | "ready" | "error";
@@ -26,6 +26,7 @@ export default function ScanPage() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const lastCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
   const [modelStatus, setModelStatus] = useState<ModelStatus>("loading");
   const [modelErrorMsg, setModelErrorMsg] = useState<string | null>(null);
@@ -97,7 +98,8 @@ export default function ScanPage() {
   }, []);
 
   const analyzeCanvas = useCallback(
-    async (canvas: HTMLCanvasElement) => {
+    async (canvas: HTMLCanvasElement, force = false) => {
+      lastCanvasRef.current = canvas;
       setStatus({ kind: "analyzing" });
       // Landmark detection blocks the main thread for a beat; yield two
       // frames so the "Measuring…" state actually PAINTS before the work
@@ -108,14 +110,20 @@ export default function ScanPage() {
         const { result, photo, input } = await runScan(
           { canvas, mirrored: false },
           profile.sex,
+          { force },
         );
         if (!result.ok) {
-          setStatus({ kind: "gate-failed", gates: result.gates.blocking });
+          setStatus({
+            kind: "gate-failed",
+            gates: result.gates.blocking,
+            alreadyForced: force,
+          });
           return;
         }
         const id = newScanId();
         saveScan({ id, createdAt: Date.now(), result, photo, input: input ?? undefined });
         stopCamera();
+        lastCanvasRef.current = null;
         // The math is done — now stage the reveal.
         setStatus({ kind: "sequence", outcome: { result, photo, input }, id });
       } catch (err) {
@@ -171,6 +179,15 @@ export default function ScanPage() {
   const dismissNotice = useCallback(() => {
     setStatus(camLive ? { kind: "camera-ready" } : { kind: "idle" });
   }, [camLive]);
+
+  const forceScan = useCallback(() => {
+    const canvas = lastCanvasRef.current;
+    if (!canvas) {
+      dismissNotice();
+      return;
+    }
+    void analyzeCanvas(canvas, true);
+  }, [analyzeCanvas, dismissNotice]);
 
   const cameraOn = camLive && (status.kind === "camera-ready" || status.kind === "analyzing");
 
@@ -288,6 +305,13 @@ export default function ScanPage() {
           message={status.kind === "upload-error" ? status.message : undefined}
           onDismiss={dismissNotice}
           onRetry={() => fileInputRef.current?.click()}
+          onForce={
+            status.kind === "gate-failed" &&
+            !status.alreadyForced &&
+            status.gates.some((g) => g.code !== "no-face" && g.code !== "multiple-faces")
+              ? forceScan
+              : undefined
+          }
         />
       )}
 
@@ -326,12 +350,14 @@ function PhotoNotice({
   message,
   onDismiss,
   onRetry,
+  onForce,
 }: {
   title: string;
   gates?: Gate[];
   message?: string;
   onDismiss: () => void;
   onRetry: () => void;
+  onForce?: () => void;
 }) {
   return (
     <div
@@ -355,14 +381,28 @@ function PhotoNotice({
           <p className="text-sm">This photo couldn&apos;t be measured.</p>
         )}
         <p className="text-xs text-ink-3">
-          Use a clear, straight-on photo — face the camera, even light, no
-          heavy turn or chin-down pose.
+          {onForce
+            ? "A clearer, straight-on photo is more accurate — or scan anyway and treat the numbers as a rough read."
+            : "Use a clear, straight-on photo — face the camera, even light, no heavy turn or chin-down pose."}
         </p>
         <div className="flex flex-col gap-2 pt-1">
+          {onForce && (
+            <button
+              type="button"
+              onClick={onForce}
+              className="gold-gradient rounded-full py-3 text-sm font-semibold tracking-[0.15em] uppercase"
+            >
+              Scan anyway
+            </button>
+          )}
           <button
             type="button"
             onClick={onRetry}
-            className="gold-gradient rounded-full py-3 text-sm font-semibold tracking-[0.15em] uppercase"
+            className={
+              onForce
+                ? "rounded-full border border-line py-3 text-sm font-semibold tracking-[0.15em] uppercase text-ink-2"
+                : "gold-gradient rounded-full py-3 text-sm font-semibold tracking-[0.15em] uppercase"
+            }
           >
             Try another photo
           </button>

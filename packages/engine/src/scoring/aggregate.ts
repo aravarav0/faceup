@@ -40,11 +40,16 @@ export function tierOf(overall: number): Tier {
  * Confidence-weighted rollup: metric → area → overall.
  * Area with confidence < 0.5 goes null ("insufficient data"); if two or more
  * areas are null the caller should refuse the scan entirely.
+ * `lenient` (force-scan) keeps low-confidence areas and only refuses if
+ * nothing at all could be scored.
  */
 export function aggregate(
   metrics: MetricResult[],
   weights: Record<string, { area: AreaKey; weight: number }>,
+  opts?: { lenient?: boolean },
 ): Aggregated {
+  const minConf = opts?.lenient ? 0.08 : MIN_AREA_CONFIDENCE;
+  const maxNull = opts?.lenient ? 4 : 2;
   const areas = {} as Record<AreaKey, AreaResult>;
   for (const area of Object.keys(AREA_WEIGHTS) as AreaKey[]) {
     let effSum = 0;
@@ -53,7 +58,7 @@ export function aggregate(
     for (const m of metrics) {
       const w = weights[m.key];
       if (!w || w.area !== area) continue;
-      const eff = w.weight * m.confidence;
+      const eff = w.weight * Math.max(m.confidence, opts?.lenient ? 0.05 : 0);
       effSum += eff;
       scoreSum += eff * m.score;
       weightSum += w.weight;
@@ -64,7 +69,7 @@ export function aggregate(
     }
     const conf = effSum / weightSum;
     areas[area] =
-      conf < MIN_AREA_CONFIDENCE
+      !opts?.lenient && conf < minConf
         ? { score: null, confidence: conf }
         : { score: Math.round(scoreSum / effSum), confidence: conf };
   }
@@ -72,7 +77,7 @@ export function aggregate(
   const nullCount = (Object.values(areas) as AreaResult[]).filter(
     (a) => a.score === null,
   ).length;
-  if (nullCount >= 2) {
+  if (nullCount >= maxNull) {
     return { areas, overall: null, tier: null };
   }
 

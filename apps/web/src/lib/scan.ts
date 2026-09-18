@@ -58,6 +58,7 @@ export interface StoredInput {
   mirrored: boolean;
   blendshapes?: Record<string, number>;
   transformationMatrix?: number[];
+  force?: boolean;
 }
 
 /**
@@ -68,6 +69,7 @@ export interface StoredInput {
 export async function runScan(
   frame: CapturedFrame,
   sex: Sex,
+  opts?: { force?: boolean },
 ): Promise<ScanOutcome> {
   const landmarker = await getLandmarker();
   const detection = landmarker.detect(frame.canvas);
@@ -124,6 +126,7 @@ export async function runScan(
     },
     sex,
     bandProfile: "calibrated",
+    force: opts?.force,
   };
 
   const result = analyze(input);
@@ -152,6 +155,7 @@ export async function runScan(
       mirrored: frame.mirrored,
       blendshapes: input.blendshapes,
       transformationMatrix: input.transformationMatrix,
+      force: opts?.force,
     },
   };
 }
@@ -191,6 +195,7 @@ export async function reanalyze(
     sex,
     bandProfile: "calibrated",
     reanalyze: true,
+    force: stored.force,
   });
 }
 

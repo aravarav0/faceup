@@ -10,7 +10,7 @@ import { runGates } from "./gates/index";
 import { METRICS } from "./metrics/registry";
 import { resolveBand } from "./scoring/bands";
 import { isOpenLowBrow, scoreAgainstBand, verdictOf } from "./scoring/curve";
-import { aggregate } from "./scoring/aggregate";
+import { aggregate, tierOf } from "./scoring/aggregate";
 import {
   overallPercentileOf,
   percentileOf,
@@ -134,8 +134,26 @@ export function analyze(input: ScanInput): ScanResult {
     weights[def.key] = { area: def.area, weight: def.weight };
   }
 
-  const agg = aggregate(metrics, weights);
-  const refused = agg.overall === null;
+  const agg = aggregate(metrics, weights, { lenient: Boolean(input.force) });
+  let overall = agg.overall;
+  let tier = agg.tier;
+  const areas = agg.areas;
+
+  if (overall === null && input.force && metrics.length > 0) {
+    let num = 0;
+    let den = 0;
+    for (const m of metrics) {
+      const w = Math.max(m.confidence, 0.05);
+      num += w * m.score;
+      den += w;
+    }
+    if (den > 0) {
+      overall = Math.round((num / den) * 10) / 10;
+      tier = tierOf(overall);
+    }
+  }
+
+  const refused = overall === null;
 
   return {
     ok: !refused,
@@ -156,20 +174,21 @@ export function analyze(input: ScanInput): ScanResult {
       : gates,
     frame,
     metrics,
-    areas: agg.areas,
-    overall: agg.overall,
+    areas,
+    overall,
     overallPercentile:
-      agg.overall !== null && bandProfile === "calibrated"
-        ? overallPercentileOf(agg.overall)
+      overall !== null && bandProfile === "calibrated"
+        ? overallPercentileOf(overall)
         : null,
     standardized:
-      agg.overall !== null && bandProfile === "calibrated"
-        ? standardizedOverall(agg.overall)
+      overall !== null && bandProfile === "calibrated"
+        ? standardizedOverall(overall)
         : null,
-    tier: agg.tier,
+    tier,
     engineVersion: ENGINE_VERSION,
     bandProfile,
     sex,
+    forced: Boolean(input.force),
   };
 }
 

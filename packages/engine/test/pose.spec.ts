@@ -137,6 +137,23 @@ describe("pose gates", () => {
     expect(res.gates.blocking.some((g) => g.code === "roll")).toBe(true);
   });
 
+  it("force still scores a 23° yaw shot", () => {
+    const res = analyze({ ...rotatedInput(23, 0, 0), force: true });
+    expect(res.ok).toBe(true);
+    expect(res.overall).not.toBeNull();
+    expect(res.forced).toBe(true);
+    expect(res.gates.blocking).toEqual([]);
+    expect(res.gates.warnings.some((g) => g.code === "yaw")).toBe(true);
+  });
+
+  it("force still scores a 17° pitch shot", () => {
+    const res = analyze({ ...rotatedInput(0, 17, 0), force: true });
+    expect(res.ok).toBe(true);
+    expect(res.overall).not.toBeNull();
+    expect(res.forced).toBe(true);
+    expect(res.gates.blocking.some((g) => g.code === "pitch")).toBe(false);
+  });
+
   it("roll ±18° barely moves scale-invariant metrics", () => {
     const base = analyze(canonicalInput());
     const rolled = analyze(rotatedInput(0, 0, 18));

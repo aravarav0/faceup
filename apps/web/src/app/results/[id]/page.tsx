@@ -327,6 +327,12 @@ export default function ResultsPage({ params }: { params: Promise<{ id: string }
           overall={result.overall}
           percentile={result.overallPercentile}
         />
+        {result.forced && (
+          <p className="text-xs text-near -mt-1">
+            Forced scan — lighting, angle, or blur was off, so treat this as a
+            rough read.
+          </p>
+        )}
         <div className="flex items-start justify-between gap-3 border-t border-line pt-2">
           <span className="text-xs text-ink-2">
             {standing ? (
