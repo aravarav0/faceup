@@ -3,8 +3,12 @@
 import type { FaceLandmarkerResult } from "@mediapipe/tasks-vision";
 import {
   analyze,
+  blendSkinOverall,
   coerceMatrix16,
+  overallPercentileOf,
   readSkin,
+  standardizedOverall,
+  tierOf,
   type Gate,
   type ScanInput,
   type ScanResult,
@@ -133,8 +137,10 @@ export async function runScan(
     force: opts?.force,
   };
 
-  const result = analyze(input);
-  const skin = result.ok ? readSkin(input, result.gates) : null;
+  const geometry = analyze(input);
+  const read = geometry.ok ? readSkin(input, geometry.gates) : null;
+  const skin = read ? { ...read, folded: true } : null;
+  const result = withSkinScore(geometry, skin);
   // Field-calibration breadcrumbs (harmless in prod, invaluable in bug reports).
   if (result.frame) {
     console.info(
@@ -163,6 +169,22 @@ export async function runScan(
       transformationMatrix: input.transformationMatrix,
       force: opts?.force,
     },
+  };
+}
+
+/** Mix a trusted skin read into the geometry score. Low-confidence reads are left out. */
+export function withSkinScore(result: ScanResult, skin: SkinRead | null | undefined): ScanResult {
+  if (!skin || result.overall === null) return result;
+  const overall = blendSkinOverall(result.overall, skin);
+  if (overall === null) return result;
+  return {
+    ...result,
+    overall,
+    tier: tierOf(overall),
+    overallPercentile:
+      result.bandProfile === "calibrated" ? overallPercentileOf(overall) : result.overallPercentile,
+    standardized:
+      result.bandProfile === "calibrated" ? standardizedOverall(overall) : result.standardized,
   };
 }
 

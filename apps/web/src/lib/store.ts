@@ -8,7 +8,7 @@ import type {
   SkinRead,
 } from "@freeharmony/engine";
 import { applyLowBrowIdeal } from "@freeharmony/engine";
-import type { StoredInput } from "./scan";
+import { withSkinScore, type StoredInput } from "./scan";
 
 // All persistence is localStorage — nothing ever leaves the device unless the
 // user explicitly opts in to an AI provider call.
@@ -108,15 +108,38 @@ export function loadScans(): StoredScan[] {
   try {
     const raw = localStorage.getItem(SCANS_KEY);
     if (raw) {
-      return (JSON.parse(raw) as StoredScan[]).map((s) => ({
+      const parsed = (JSON.parse(raw) as StoredScan[]).map((s) => ({
         ...s,
         result: applyLowBrowIdeal(s.result),
       }));
+      return foldSkinIntoStored(parsed);
     }
   } catch {
     // corrupted store — treat as empty rather than crash
   }
   return [];
+}
+
+/** Older scans stored skin beside the score. Mix it in once, then remember that. */
+function foldSkinIntoStored(scans: StoredScan[]): StoredScan[] {
+  let changed = false;
+  const next = scans.map((s) => {
+    if (!s.skin || s.skin.folded) return s;
+    changed = true;
+    return {
+      ...s,
+      result: withSkinScore(s.result, s.skin),
+      skin: { ...s.skin, folded: true },
+    };
+  });
+  if (changed) {
+    try {
+      localStorage.setItem(SCANS_KEY, JSON.stringify(next));
+    } catch {
+      // The in-memory copy still has the mix. A later save can persist it.
+    }
+  }
+  return next;
 }
 
 export function getScan(id: string): StoredScan | undefined {

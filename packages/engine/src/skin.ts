@@ -1,3 +1,4 @@
+import { round1 } from "./scoring/curve";
 import type { Frame, GateReport, ImageLike, Pt, ScanInput } from "./types";
 import { buildFrame } from "./normalize";
 import { pt, pupils } from "./landmarks/accessors";
@@ -11,8 +12,9 @@ import {
   TRICHION_PROXY,
 } from "./landmarks/indices";
 
-/** Photo complexion, stored beside the harmony score. Higher evenness is calmer tone.
+/** Photo complexion. Higher evenness is calmer tone.
  *  Higher redness is more cheek red than the forehead. Higher shine is more T-zone specks.
+ *  When confidence is high enough, this is a small part of the harmony score.
  */
 export interface SkinRead {
   evenness: number;
@@ -22,6 +24,43 @@ export interface SkinRead {
   confidence: number;
   summary: string;
   flags: string[];
+  /** Set once this read has been mixed into a stored overall, so it is not applied twice. */
+  folded?: boolean;
+}
+
+/** Share of the harmony score given to skin, before confidence. Geometry stays the rest. */
+export const SKIN_SCORE_WEIGHT = 0.12;
+/** Below this, the read is shown but left out of the score. */
+export const SKIN_MIN_CONFIDENCE = 0.5;
+
+export type SkinVerdict = "Very good" | "Good" | "Fair" | "Poor";
+
+/** 0–100. Even tone raises it; cheek redness and T-zone shine lower it. */
+export function skinQuality(skin: Pick<SkinRead, "evenness" | "redness" | "shine">): number {
+  const score =
+    skin.evenness * 0.5 + (100 - skin.redness) * 0.25 + (100 - skin.shine) * 0.25;
+  return round1(Math.max(0, Math.min(100, score)));
+}
+
+export function skinVerdict(score: number): SkinVerdict {
+  if (score >= 85) return "Very good";
+  if (score >= 70) return "Good";
+  if (score >= 55) return "Fair";
+  return "Poor";
+}
+
+export function skinCounts(skin: Pick<SkinRead, "confidence">): boolean {
+  return skin.confidence >= SKIN_MIN_CONFIDENCE;
+}
+
+/**
+ * Pull `overall` a short way toward the skin quality.
+ * Returns null when the photo is too unevenly lit or too soft to trust.
+ */
+export function blendSkinOverall(overall: number, skin: SkinRead): number | null {
+  if (!skinCounts(skin)) return null;
+  const w = SKIN_SCORE_WEIGHT * skin.confidence;
+  return round1((overall + w * skinQuality(skin)) / (1 + w));
 }
 
 export interface SkinDisk {
@@ -221,10 +260,6 @@ function mean(values: number[]): number {
 
 function clamp01(v: number): number {
   return v < 0 ? 0 : v > 1 ? 1 : v;
-}
-
-function round1(v: number): number {
-  return Math.round(v * 10) / 10;
 }
 
 function downsample(img: ImageLike, maxLong: number): Planes {

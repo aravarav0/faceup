@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildFrame } from "../src/normalize";
-import { readSkin, skinDisks } from "../src/skin";
+import { blendSkinOverall, readSkin, skinDisks, skinQuality, skinVerdict } from "../src/skin";
 import type { ImageLike } from "../src/types";
 import { canonicalInput, FRAME_H, FRAME_W } from "./helpers";
 
@@ -39,7 +39,7 @@ function disk(
 describe("skin read", () => {
   const disks = skinDisks(buildFrame(canonicalInput()).frame);
 
-  it("reads an even face as calm and keeps it out of the harmony metrics", () => {
+  it("reads an even face as calm", () => {
     const image = paint((x, y, data, p) => {
       const luma = 70 + (x / FRAME_W) * 160;
       data[p] = luma;
@@ -78,5 +78,24 @@ describe("skin read", () => {
     expect(marked!.shine).toBeGreaterThan(calm!.shine + 15);
     expect(calm!.evenness).toBeGreaterThan(marked!.evenness);
     expect(marked!.flags).not.toContain("side-light");
+    expect(skinQuality(calm!)).toBeGreaterThan(80);
+    expect(skinQuality(calm!)).toBeGreaterThan(skinQuality(marked!));
+    expect(["Very good", "Good"]).toContain(skinVerdict(skinQuality(calm!)));
+  });
+
+  it("moves the harmony score a little toward skin, and skips an unsure photo", () => {
+    const trusted = {
+      evenness: 40,
+      redness: 80,
+      shine: 70,
+      confidence: 0.8,
+      summary: "",
+      flags: [],
+    };
+    const blended = blendSkinOverall(90, trusted);
+    expect(blended).not.toBeNull();
+    expect(blended!).toBeLessThan(90);
+    expect(blended!).toBeGreaterThan(84);
+    expect(blendSkinOverall(90, { ...trusted, confidence: 0.4 })).toBeNull();
   });
 });

@@ -8,14 +8,18 @@ import {
   PSL_TITLE_FULL,
   pslFromScan,
   round1,
+  skinCounts,
+  skinQuality,
+  skinVerdict,
   type MetricKey,
   type MetricResult,
   type ScanResult,
+  type SkinRead,
   type Tier,
 } from "@freeharmony/engine";
 import { AREA_LABELS, AREA_WEIGHTS } from "@freeharmony/engine";
 import type { AreaKey } from "@freeharmony/engine";
-import { reanalyze } from "@/lib/scan";
+import { reanalyze, withSkinScore } from "@/lib/scan";
 import {
   cropBoxAspect,
   cropImageStyle,
@@ -85,11 +89,14 @@ export default function ResultsPage({ params }: { params: Promise<{ id: string }
     let cancelled = false;
     void (async () => {
       try {
-        const next = await reanalyze(
-          scan.input!,
-          scan.photo,
-          loadProfile().sex,
-          scan.overrides,
+        const next = withSkinScore(
+          await reanalyze(
+            scan.input!,
+            scan.photo,
+            loadProfile().sex,
+            scan.overrides,
+          ),
+          scan.skin,
         );
         if (cancelled || !next.ok || next.overall === null) return;
         const updated =
@@ -123,7 +130,10 @@ export default function ResultsPage({ params }: { params: Promise<{ id: string }
     try {
       const merged = { ...scan.overrides, ...draftOverrides };
       const profile = loadProfile();
-      const next: ScanResult = await reanalyze(scan.input, scan.photo, profile.sex, merged);
+      const next: ScanResult = withSkinScore(
+        await reanalyze(scan.input, scan.photo, profile.sex, merged),
+        scan.skin,
+      );
       if (!next.ok || next.overall === null) {
         setAdjustError(
           next.gates.blocking[0]?.message ??
@@ -480,18 +490,7 @@ export default function ResultsPage({ params }: { params: Promise<{ id: string }
       </div>
 
       {scan.skin && (
-        <div className="card px-5 py-4 flex flex-col gap-3">
-          <div className="flex items-baseline justify-between gap-3">
-            <span className="text-[15px] font-medium">Skin in this photo</span>
-            <span className="text-xs text-ink-3">Beside the harmony score</span>
-          </div>
-          <div className="grid grid-cols-3 gap-2">
-            <SkinStat label="Evenness" value={scan.skin.evenness} />
-            <SkinStat label="Redness" value={scan.skin.redness} />
-            <SkinStat label="Shine" value={scan.skin.shine} />
-          </div>
-          <p className="text-xs text-ink-2">{scan.skin.summary}</p>
-        </div>
+        <SkinCard skin={scan.skin} />
       )}
 
       {/* Metric list */}
@@ -548,6 +547,36 @@ export default function ResultsPage({ params }: { params: Promise<{ id: string }
       </Link>
       <div className="h-14" aria-hidden />
     </Shell>
+  );
+}
+
+function SkinCard({ skin }: { skin: SkinRead }) {
+  const verdict = skinVerdict(skinQuality(skin));
+  const counts = skinCounts(skin);
+  const tone =
+    verdict === "Very good" || verdict === "Good"
+      ? "text-ideal"
+      : verdict === "Fair"
+        ? "text-near"
+        : "text-work";
+  return (
+    <div className="card px-5 py-4 flex flex-col gap-3">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="text-[15px] font-medium">Skin in this photo</span>
+        <span className={`text-sm ${tone}`}>{verdict}</span>
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        <SkinStat label="Evenness" value={skin.evenness} />
+        <SkinStat label="Redness" value={skin.redness} />
+        <SkinStat label="Shine" value={skin.shine} />
+      </div>
+      <p className="text-xs text-ink-2">{skin.summary}</p>
+      <p className="text-[0.65rem] text-ink-3">
+        {counts
+          ? "Counts in the harmony score."
+          : "Not in the score — the light in this photo makes the read unsure."}
+      </p>
+    </div>
   );
 }
 
