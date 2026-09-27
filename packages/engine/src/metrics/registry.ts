@@ -57,6 +57,7 @@ import {
 } from "../landmarks/indices";
 import { fitLinePCA } from "../math/fit";
 import { BANDS } from "../scoring/bands";
+import { FRONT_CATALOG } from "./frontCatalog";
 import { subScore } from "../scoring/curve";
 import { resolveBand } from "../scoring/bands";
 import { median, sobelMagAt, sobelP90, toGray } from "../image/ops";
@@ -671,6 +672,7 @@ export const METRICS: MetricDef[] = [
     },
     compute: (f) => browPosition(f),
   },
+  ...FRONT_CATALOG,
 ];
 
 export { L_LID_INF2, L_LID_SUP2, R_LID_INF2, R_LID_SUP2 };

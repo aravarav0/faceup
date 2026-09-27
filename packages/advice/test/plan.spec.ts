@@ -110,10 +110,28 @@ describe("personalization from onboarding answers", () => {
     expect(item.reason.toLowerCase()).toContain("sunscreen");
   });
 
+  it("a skipped skincare answer is not treated as an empty routine", () => {
+    const plan = generatePlan(base, { sex: "neutral" });
+    const item = plan.items.find((i) => i.rule.id === "skincare-baseline")!;
+    expect(item.reason).not.toContain("don't run a routine");
+  });
+
   it("skin type tailors the skincare copy", () => {
     const plan = generatePlan(base, { sex: "neutral", skinType: "oily", skincare: ["none"] });
     const item = plan.items.find((i) => i.rule.id === "skincare-baseline")!;
     expect(item.rule.body.toLowerCase()).toContain("oily");
+  });
+
+  it("a skin clarity concern quotes the stored photo read and leaves skin type as wording", () => {
+    const plan = generatePlan(
+      base,
+      { sex: "neutral", concerns: ["skin"], skinType: "dry" },
+      { evenness: 40, redness: 70, shine: 10, confidence: 0.8, summary: "", flags: [] },
+    );
+    const item = plan.items.find((i) => i.rule.id === "skincare-baseline")!;
+    expect(item.rule.body.toLowerCase()).toContain("uneven");
+    expect(item.rule.body.toLowerCase()).toContain("redder");
+    expect(item.rule.body.toLowerCase()).toContain("dry");
   });
 
   it("bad sleep boosts the sleep rule; great sleep demotes it", () => {

@@ -1,5 +1,6 @@
 import { isOpenLowBrow, LANDMARKS, TRICHION_K } from "@freeharmony/engine";
 import type { MetricKey, MetricResult } from "@freeharmony/engine";
+import { catalogIdeal } from "./idealCatalog";
 
 export type XY = { x: number; y: number };
 
@@ -230,7 +231,8 @@ export function idealPointsForMetric(
       };
       const span = m.y - t.y;
       if (span < 1e-6) break;
-      put(out, TRICHION_PROXY, p, t, aspect);
+      // Landmark 10 sits on the forehead, not at the estimated hairline.
+      // Dragging it up there pulls hair down the center of the face.
       put(out, GLABELLA, g, { x: g.x, y: t.y + span / 3 }, aspect);
       put(out, SUBNASALE, s, { x: s.x, y: t.y + (2 * span) / 3 }, aspect);
       break;
@@ -368,8 +370,38 @@ export function idealPointsForMetric(
       }
       break;
     }
-    default:
+    default: {
+      const extra = catalogIdeal(key, landmarks, metric, aspect);
+      if (extra) {
+        for (const [k, v] of Object.entries(extra)) out[Number(k)] = v;
+      }
       break;
+    }
   }
+  return out;
+}
+
+/** Every measurement that can move a landmark, averaged where they share a point. */
+export function idealPointsForAll(
+  metrics: readonly MetricResult[],
+  landmarks: ReadonlyArray<{ x: number; y: number } | undefined>,
+  aspect: number,
+): Record<number, XY> {
+  const acc = new Map<number, { x: number; y: number; n: number }>();
+  for (const metric of metrics) {
+    const pts = idealPointsForMetric(metric.key, landmarks, metric, aspect);
+    for (const [k, p] of Object.entries(pts)) {
+      const i = Number(k);
+      const cur = acc.get(i);
+      if (!cur) acc.set(i, { x: p.x, y: p.y, n: 1 });
+      else {
+        cur.x += p.x;
+        cur.y += p.y;
+        cur.n += 1;
+      }
+    }
+  }
+  const out: Record<number, XY> = {};
+  for (const [i, v] of acc) out[i] = { x: v.x / v.n, y: v.y / v.n };
   return out;
 }

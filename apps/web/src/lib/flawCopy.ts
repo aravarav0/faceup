@@ -145,6 +145,15 @@ export function describeFlaw(m: MetricResult): { headline: string; detail: strin
         headline: "Brows sit high",
         detail: "There's a large gap between your brows and eyes.",
       };
+    case "cupidBowDepth":
+      return high
+        ? { headline: "Deep cupid's bow", detail: "The dip in the upper lip is pronounced." }
+        : { headline: "Flat cupid's bow", detail: "The upper lip has little bow shape." };
+    case "earProtrusion":
+      return {
+        headline: "Ears sit wide",
+        detail: "The ears read wider than the cheekbones. The mesh only approximates the ear.",
+      };
     default:
       return {
         headline: m.label,

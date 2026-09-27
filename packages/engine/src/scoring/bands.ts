@@ -114,6 +114,128 @@ const RAW_BANDS: Record<MetricKey, Record<"faceharmony-parity" | "literature", B
       feminine: { lo: 0.26, hi: 0.36 },
     },
   },
+  // Front-only additions. Ranges are aesthetic centers, not FaceIQ's
+  // unpublished weights. Low-set brows stay on browPosition (open below the floor).
+  totalFaceRatio: {
+    "faceharmony-parity": { lo: 1.42, hi: 1.72 },
+    literature: { lo: 1.42, hi: 1.72 },
+  },
+  bitemporalWidth: {
+    "faceharmony-parity": { lo: 1.05, hi: 1.35 },
+    literature: { lo: 1.05, hi: 1.35 },
+  },
+  cheekboneHeight: {
+    "faceharmony-parity": { lo: 0.05, hi: 0.5 },
+    literature: { lo: 0.05, hi: 0.5 },
+  },
+  eyeAspect: {
+    "faceharmony-parity": { lo: 2.6, hi: 4.6 },
+    literature: { lo: 2.6, hi: 4.6 },
+  },
+  oneEyeApart: {
+    "faceharmony-parity": { lo: 1.2, hi: 1.65 },
+    literature: { lo: 1.2, hi: 1.65 },
+  },
+  eyebrowTilt: {
+    "faceharmony-parity": {
+      masculine: { lo: -4, hi: 14, sLo: 6, sHi: 6 },
+      feminine: { lo: 0, hi: 18, sLo: 6, sHi: 6 },
+    },
+    literature: {
+      masculine: { lo: -4, hi: 14, sLo: 6, sHi: 6 },
+      feminine: { lo: 0, hi: 18, sLo: 6, sHi: 6 },
+    },
+  },
+  browLengthRatio: {
+    "faceharmony-parity": { lo: 0.58, hi: 0.82 },
+    literature: { lo: 0.58, hi: 0.82 },
+  },
+  nasalIntercanthal: {
+    "faceharmony-parity": { lo: 0.75, hi: 1.05 },
+    literature: { lo: 0.75, hi: 1.05 },
+  },
+  noseBridgeRatio: {
+    "faceharmony-parity": { lo: 1.6, hi: 2.6 },
+    literature: { lo: 1.6, hi: 2.6 },
+  },
+  eyeNoseAngle: {
+    "faceharmony-parity": { lo: 72, hi: 100, sLo: 10, sHi: 10 },
+    literature: { lo: 72, hi: 100, sLo: 10, sHi: 10 },
+  },
+  jawFrontalAngle: {
+    "faceharmony-parity": { lo: 108, hi: 140, sLo: 12, sHi: 12 },
+    literature: { lo: 108, hi: 140, sLo: 12, sHi: 12 },
+  },
+  midfaceJawAlign: {
+    "faceharmony-parity": { lo: 22, hi: 52, sLo: 10, sHi: 10 },
+    literature: { lo: 22, hi: 52, sLo: 10, sHi: 10 },
+  },
+  cupidBowDepth: {
+    "faceharmony-parity": { lo: 0.005, hi: 0.07 },
+    literature: { lo: 0.005, hi: 0.07 },
+  },
+  mouthToEyeWidth: {
+    "faceharmony-parity": { lo: 0.65, hi: 0.95 },
+    literature: { lo: 0.65, hi: 0.95 },
+  },
+  mouthCornerHeight: {
+    "faceharmony-parity": { lo: -16, hi: 6, sLo: 6, sHi: 6 },
+    literature: { lo: -16, hi: 6, sLo: 6, sHi: 6 },
+  },
+  jawSlope: {
+    "faceharmony-parity": { lo: 48, hi: 76, sLo: 10, sHi: 10 },
+    literature: { lo: 48, hi: 76, sLo: 10, sHi: 10 },
+  },
+  earProtrusion: {
+    "faceharmony-parity": { lo: 0.02, hi: 0.16, sLo: 0.05, sHi: 0.05 },
+    literature: { lo: 0.02, hi: 0.16, sLo: 0.05, sHi: 0.05 },
+  },
+  lipFullness: {
+    "faceharmony-parity": {
+      masculine: { lo: 0.16, hi: 0.32 },
+      feminine: { lo: 0.2, hi: 0.38 },
+    },
+    literature: {
+      masculine: { lo: 0.16, hi: 0.32 },
+      feminine: { lo: 0.2, hi: 0.38 },
+    },
+  },
+  cheekProminence: {
+    "faceharmony-parity": { lo: 0.04, hi: 0.16 },
+    literature: { lo: 0.04, hi: 0.16 },
+  },
+  chinDefinition: {
+    "faceharmony-parity": { lo: 140, hi: 175, sLo: 12, sHi: 12 },
+    literature: { lo: 140, hi: 175, sLo: 12, sHi: 12 },
+  },
+  noseSymmetry: {
+    "faceharmony-parity": { lo: 85, hi: 100, sLo: 10 },
+    literature: { lo: 85, hi: 100, sLo: 10 },
+  },
+  mouthSymmetry: {
+    "faceharmony-parity": { lo: 85, hi: 100, sLo: 10 },
+    literature: { lo: 85, hi: 100, sLo: 10 },
+  },
+  browSymmetry: {
+    "faceharmony-parity": { lo: 85, hi: 100, sLo: 10 },
+    literature: { lo: 85, hi: 100, sLo: 10 },
+  },
+  cheekSymmetry: {
+    "faceharmony-parity": { lo: 85, hi: 100, sLo: 10 },
+    literature: { lo: 85, hi: 100, sLo: 10 },
+  },
+  earSymmetry: {
+    "faceharmony-parity": { lo: 80, hi: 100, sLo: 12 },
+    literature: { lo: 80, hi: 100, sLo: 12 },
+  },
+  templeSymmetry: {
+    "faceharmony-parity": { lo: 85, hi: 100, sLo: 10 },
+    literature: { lo: 85, hi: 100, sLo: 10 },
+  },
+  verticalSymmetry: {
+    "faceharmony-parity": { lo: 85, hi: 100, sLo: 10 },
+    literature: { lo: 85, hi: 100, sLo: 10 },
+  },
 };
 
 /**
@@ -151,6 +273,33 @@ const CALIBRATED_S: Record<MetricKey, number> = {
   // No corpus signal (needs image pixels) — keeps its hand-set scale.
   jawlineDefinition: 0.28,
   browPosition: 0.045,
+  totalFaceRatio: 0.08,
+  bitemporalWidth: 0.04,
+  cheekboneHeight: 0.1,
+  eyeAspect: 0.45,
+  oneEyeApart: 0.08,
+  eyebrowTilt: 6,
+  browLengthRatio: 0.06,
+  nasalIntercanthal: 0.08,
+  noseBridgeRatio: 0.25,
+  eyeNoseAngle: 10,
+  jawFrontalAngle: 12,
+  midfaceJawAlign: 8,
+  cupidBowDepth: 0.02,
+  mouthToEyeWidth: 0.1,
+  mouthCornerHeight: 3,
+  jawSlope: 8,
+  earProtrusion: 0.04,
+  lipFullness: 0.05,
+  cheekProminence: 0.04,
+  chinDefinition: 15,
+  noseSymmetry: 10,
+  mouthSymmetry: 10,
+  browSymmetry: 10,
+  cheekSymmetry: 10,
+  earSymmetry: 12,
+  templeSymmetry: 10,
+  verticalSymmetry: 10,
 };
 
 function withS(b: Band, s: number): Band {

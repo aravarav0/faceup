@@ -1,9 +1,10 @@
 "use client";
 
-import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { use, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import {
   METRICS,
+  LANDMARKS,
   PSL_TITLE_FULL,
   pslFromScan,
   round1,
@@ -31,7 +32,9 @@ import { personalContext } from "@/lib/store";
 import { AiCheckCard } from "@/components/AiCheckCard";
 import { FaceRating } from "@/components/FaceRating";
 import { rankFlaws, rankStrengths, populationStanding } from "@/lib/flawCopy";
-import { idealPointsForMetric } from "@/lib/idealOverlay";
+import { idealPointsForMetric, idealPointsForAll } from "@/lib/idealOverlay";
+import { pinJaw } from "@/lib/jawSpread";
+import { buildWarpCloud, destinationCloud, renderWarp, type WarpCloud } from "@/lib/faceWarp";
 
 const TIER_LABEL: Record<Tier, string> = {
   excellent: "Excellent",
@@ -55,6 +58,8 @@ export default function ResultsPage({ params }: { params: Promise<{ id: string }
   const [draftOverrides, setDraftOverrides] = useState<Record<number, { x: number; y: number }>>({});
   const [busy, setBusy] = useState(false);
   const [adjustError, setAdjustError] = useState<string | null>(null);
+  const [morphT, setMorphT] = useState(0);
+  const [idealFace, setIdealFace] = useState(false);
 
   useEffect(() => {
     setScan(getScan(id) ?? null);
@@ -63,9 +68,20 @@ export default function ResultsPage({ params }: { params: Promise<{ id: string }
     }
   }, [id]);
 
-  // Restore a score that Adjust Points previously wiped by overwriting with a refused reanalyze.
+  // Restore a blank score, and refresh scans saved before newer front metrics existed.
+  const refreshKey = useRef<string | null>(null);
   useEffect(() => {
-    if (!scan?.input || !scan.photo || scan.result.overall !== null) return;
+    if (!scan?.input || !scan.photo) return;
+    const have = new Set(scan.result.metrics.map((m) => m.key));
+    const known = new Set(METRICS.map((d) => d.key));
+    const stale =
+      METRICS.some((d) => !d.needsImage && !have.has(d.key)) ||
+      scan.result.metrics.some((m) => !known.has(m.key));
+    const blank = scan.result.overall === null;
+    if (!stale && !blank) return;
+    const token = `${scan.id}:${stale}:${blank}`;
+    if (refreshKey.current === token) return;
+    refreshKey.current = token;
     let cancelled = false;
     void (async () => {
       try {
@@ -80,7 +96,7 @@ export default function ResultsPage({ params }: { params: Promise<{ id: string }
           updateScan(scan.id, { result: next }) ?? { ...scan, result: next };
         setScan(updated);
       } catch {
-        // leave the blank result; user can rescan
+        // leave the stored result; user can rescan
       }
     })();
     return () => {
@@ -159,6 +175,16 @@ export default function ResultsPage({ params }: { params: Promise<{ id: string }
     }
     return idealPointsForMetric(selected, mergedLandmarks, selectedMetric, photoAspect);
   }, [selected, selectedMetric, mergedLandmarks, photoAspect]);
+  const allIdeals = useMemo(() => {
+    if (!photoAspect || !result) return {};
+    return idealPointsForAll(result.metrics, mergedLandmarks, photoAspect);
+  }, [result, mergedLandmarks, photoAspect]);
+  const morphField = useMemo(
+    () => pinJaw(mergedLandmarks, idealFace ? allIdeals : idealGhosts),
+    [mergedLandmarks, idealFace, allIdeals, idealGhosts],
+  );
+  const morphTargets = morphField.targets;
+  const morphing = !adjusting && morphT > 0 && Object.keys(morphTargets).length > 0;
   const hasIdealGhosts = Object.keys(idealGhosts).length > 0;
 
   if (scan === undefined) {
@@ -224,12 +250,17 @@ export default function ResultsPage({ params }: { params: Promise<{ id: string }
             overlay={selectedDef.overlay}
             adjusting={adjusting}
             overrides={{ ...scan.overrides, ...draftOverrides }}
-            ideal={idealGhosts}
+            ideal={morphing ? undefined : idealGhosts}
+            morph={
+              morphing
+                ? { points: morphField.points, targets: morphTargets, t: morphT }
+                : null
+            }
             onDrag={(idx, x, y) =>
               setDraftOverrides((prev) => ({ ...prev, [idx]: { x, y } }))
             }
           />
-          {selectedMetric && !adjusting && !hasIdealGhosts && (
+          {selectedMetric && !adjusting && !hasIdealGhosts && !morphing && (
             <MetricChip
               metric={selectedMetric}
               className="pointer-events-none absolute bottom-3 left-3 right-3"
@@ -239,12 +270,54 @@ export default function ResultsPage({ params }: { params: Promise<{ id: string }
         {selectedMetric && (adjusting || hasIdealGhosts) && (
           <MetricChip metric={selectedMetric} className="card" />
         )}
-        {hasIdealGhosts && (
+        {hasIdealGhosts && !morphing && (
           <p className="text-[0.65rem] text-ink-3 px-1">
             <span className="text-gold">Gold</span> = yours.{" "}
             <span className="text-ideal">Green</span> = where this would sit in the
             ideal range.
           </p>
+        )}
+        {!adjusting && (
+          <div className="card px-4 py-3 flex flex-col gap-3">
+            <div className="flex items-center justify-between gap-3">
+              <label className="text-xs text-ink-2" htmlFor="morph-slider">
+                {idealFace ? "All measurements" : selectedDef.label}
+              </label>
+              <button
+                type="button"
+                onClick={() => {
+                  setIdealFace((on) => {
+                    const next = !on;
+                    setMorphT(next ? 1 : 0);
+                    return next;
+                  });
+                }}
+                className={`shrink-0 rounded-full px-3 py-1.5 text-xs uppercase tracking-[0.14em] ${
+                  idealFace ? "gold-gradient font-semibold" : "border border-line text-ink-2"
+                }`}
+              >
+                {idealFace ? "Your photo" : "Ideal face"}
+              </button>
+            </div>
+            <input
+              id="morph-slider"
+              type="range"
+              min={0}
+              max={100}
+              value={Math.round(morphT * 100)}
+              disabled={!idealFace && !hasIdealGhosts}
+              onChange={(e) => setMorphT(Number(e.target.value) / 100)}
+              aria-label={idealFace ? "Morph all measurements" : `Morph ${selectedDef.label}`}
+              className="w-full accent-[#d8b888] disabled:opacity-40"
+            />
+            <p className="text-[0.65rem] text-ink-3">
+              {idealFace
+                ? "Every proportion that can move, on this photo. Slide back for your face."
+                : hasIdealGhosts
+                  ? "Slide toward the ideal for this measurement only."
+                  : "This measurement is already in range, or it does not move the photo. Ideal face still can."}
+            </p>
+          </div>
         )}
       </div>
 
@@ -406,7 +479,25 @@ export default function ResultsPage({ params }: { params: Promise<{ id: string }
         ))}
       </div>
 
+      {scan.skin && (
+        <div className="card px-5 py-4 flex flex-col gap-3">
+          <div className="flex items-baseline justify-between gap-3">
+            <span className="text-[15px] font-medium">Skin in this photo</span>
+            <span className="text-xs text-ink-3">Beside the harmony score</span>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <SkinStat label="Evenness" value={scan.skin.evenness} />
+            <SkinStat label="Redness" value={scan.skin.redness} />
+            <SkinStat label="Shine" value={scan.skin.shine} />
+          </div>
+          <p className="text-xs text-ink-2">{scan.skin.summary}</p>
+        </div>
+      )}
+
       {/* Metric list */}
+      <p className="text-xs text-ink-3 px-1">
+        Front landmark measurements. Side-profile ratios stay out of this score.
+      </p>
       <div className="flex flex-col gap-3 pb-10">
         {result.metrics.map((m) => (
           <button
@@ -435,6 +526,12 @@ export default function ResultsPage({ params }: { params: Promise<{ id: string }
               {m.confidence < 0.6 && (
                 <span className="text-xs text-ink-3">low confidence</span>
               )}
+              {m.flags?.includes("photo-estimate") && (
+                <span className="text-xs text-ink-3">photo estimate</span>
+              )}
+              {m.flags?.includes("ear-proxy") && (
+                <span className="text-xs text-ink-3">ear estimate</span>
+              )}
             </div>
           </button>
         ))}
@@ -451,6 +548,15 @@ export default function ResultsPage({ params }: { params: Promise<{ id: string }
       </Link>
       <div className="h-14" aria-hidden />
     </Shell>
+  );
+}
+
+function SkinStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="flex flex-col items-center gap-1">
+      <span className="numeral text-2xl text-gold">{Math.round(value)}</span>
+      <span className="text-[0.65rem] tracking-wider uppercase text-ink-2">{label}</span>
+    </div>
   );
 }
 
@@ -813,6 +919,7 @@ function PhotoOverlay({
   adjusting,
   overrides,
   ideal,
+  morph,
   onDrag,
 }: {
   photo: string;
@@ -824,6 +931,11 @@ function PhotoOverlay({
   adjusting: boolean;
   overrides: Record<number, { x: number; y: number }>;
   ideal?: Record<number, { x: number; y: number }>;
+  morph?: {
+    points: ReadonlyArray<{ x: number; y: number } | undefined>;
+    targets: Record<number, { x: number; y: number }>;
+    t: number;
+  } | null;
   onDrag: (idx: number, x: number, y: number) => void;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
@@ -874,10 +986,22 @@ function PhotoOverlay({
         src={photo}
         alt="Your scan"
         className={boxAspect ? undefined : "w-full"}
-        style={boxAspect ? cropImageStyle(crop) : undefined}
+        style={{
+          ...(boxAspect ? cropImageStyle(crop) : undefined),
+          visibility: morph ? "hidden" : "visible",
+        }}
         draggable={false}
       />
-      {landmarks.length > 0 && (
+      {morph && (
+        <MorphCanvas
+          photo={photo}
+          points={morph.points}
+          targets={morph.targets}
+          t={morph.t}
+          style={boxAspect ? cropImageStyle(crop) : { width: "100%" }}
+        />
+      )}
+      {landmarks.length > 0 && !morph && (
         <svg
           ref={svgRef}
           viewBox="0 0 1 1"
@@ -980,6 +1104,54 @@ function PhotoOverlay({
       )}
     </div>
   );
+}
+
+function MorphCanvas({
+  photo,
+  points,
+  targets,
+  t,
+  style,
+}: {
+  photo: string;
+  points: ReadonlyArray<{ x: number; y: number } | undefined>;
+  targets: Record<number, { x: number; y: number }>;
+  t: number;
+  style: CSSProperties;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const cloudRef = useRef<{ key: string; cloud: WarpCloud } | null>(null);
+
+  useEffect(() => {
+    let cancel = false;
+    const img = new Image();
+    img.onload = () => {
+      if (cancel) return;
+      // Every landmark pins the photo. A sparse set leaves triangles that
+      // stretch hair across the forehead when one point moves.
+      const sum = points.reduce((s, p, i) => (p && i % 7 === 0 ? s + p.x + p.y : s), 0);
+      const key = `${img.naturalWidth}x${img.naturalHeight}:${points.length}:${sum.toFixed(3)}`;
+      if (!cloudRef.current || cloudRef.current.key !== key) {
+        const cloud = buildWarpCloud(points, img.naturalWidth, img.naturalHeight);
+        if (!cloud) return;
+        cloudRef.current = { key, cloud };
+      }
+      const cloud = cloudRef.current.cloud;
+      const dst = destinationCloud(cloud, targets, t, img.naturalWidth, img.naturalHeight);
+      const painted = renderWarp(img, cloud, dst);
+      const canvas = canvasRef.current;
+      if (!canvas || cancel) return;
+      canvas.width = painted.width;
+      canvas.height = painted.height;
+      canvas.getContext("2d")?.drawImage(painted, 0, 0);
+    };
+    img.src = photo;
+    return () => {
+      cancel = true;
+    };
+  }, [photo, points, targets, t]);
+
+  return <canvas ref={canvasRef} aria-label="Morphed scan" style={style} />;
 }
 
 /** Compose a shareable score card and download it. */

@@ -1,4 +1,4 @@
-import type { ScanResult, Sex } from "@freeharmony/engine";
+import type { ScanResult, Sex, SkinRead } from "@freeharmony/engine";
 import { RULES, SAFETY_NOTES, type AdviceRule } from "./rules";
 
 export interface PlanItem {
@@ -56,6 +56,22 @@ const SKIN_TYPE_ADDON: Record<NonNullable<PersonalContext["skinType"]>, string> 
   sensitive: "For sensitive skin: fragrance-free everything, patch-test new products, and add one product at a time.",
 };
 
+/** Skin clarity concern points at the stored photo read. Skin type stays wording-only. */
+function skinConcernNote(concerns: string[] | undefined, skin?: SkinRead | null): string | null {
+  if (!concerns?.includes("skin") || !skin) return null;
+  if (skin.confidence < 0.5) {
+    return "The light in this photo is uneven, so the skin note stays soft. It sits beside the harmony score.";
+  }
+  const bits: string[] = [];
+  if (skin.evenness < 70) bits.push("tone looks uneven");
+  if (skin.redness >= 45) bits.push("the cheeks look redder than the forehead");
+  if (skin.shine >= 45) bits.push("the T-zone shows bright specks");
+  if (bits.length === 0) {
+    return "In this photo, tone, redness, and shine look calm. That note sits beside the harmony score.";
+  }
+  return `In this photo, ${bits.join(", ")}. That reading sits beside the harmony score.`;
+}
+
 /**
  * Deterministic plan generation: rank each rule by (leverage × worst targeted
  * deficit), then personalize with the onboarding answers — what you already
@@ -63,7 +79,11 @@ const SKIN_TYPE_ADDON: Record<NonNullable<PersonalContext["skinType"]>, string> 
  * copy references your actual answers. No AI involved — the optional AI deep
  * report layers narrative on top of this, never replaces it.
  */
-export function generatePlan(result: ScanResult, personal: PersonalContext): Plan {
+export function generatePlan(
+  result: ScanResult,
+  personal: PersonalContext,
+  skin?: SkinRead | null,
+): Plan {
   const { sex } = personal;
   const deficits = new Map<string, { label: string; score: number }>();
   for (const m of result.metrics) {
@@ -113,21 +133,27 @@ export function generatePlan(result: ScanResult, personal: PersonalContext): Pla
 
     // ---- per-rule personalization from onboarding answers ----
     if (rule.id === "skincare-baseline") {
-      const core = ["cleanser", "moisturizer", "sunscreen"];
-      const missing = core.filter((k) => !has(k));
-      if (has("none") || (personal.skincare?.length ?? 0) === 0) {
-        priority *= 1.35;
-        reason = "You said you don't run a routine yet — this is the cheapest visible upgrade available.";
-      } else if (missing.length === 0) {
-        priority *= 0.4;
-        reason = "You already run the core routine — keep it consistent; nothing new to buy.";
-        body = "You've got cleanser, moisturizer, and SPF covered. The lever now is consistency and sun discipline, not more products.";
-      } else {
-        reason = `Your routine is missing ${missing.join(" and ")} — ${missing.includes("sunscreen") ? "SPF is the single highest-leverage item" : "worth adding"}.`;
+      // Unset means the question was skipped, so the default copy stays.
+      const routine = personal.skincare;
+      if (routine) {
+        const core = ["cleanser", "moisturizer", "sunscreen"];
+        const missing = core.filter((k) => !has(k));
+        if (has("none") || routine.length === 0) {
+          priority *= 1.35;
+          reason = "You said you don't run a routine yet — this is the cheapest visible upgrade available.";
+        } else if (missing.length === 0) {
+          priority *= 0.4;
+          reason = "You already run the core routine — keep it consistent; nothing new to buy.";
+          body = "You've got cleanser, moisturizer, and SPF covered. The lever now is consistency and sun discipline, not more products.";
+        } else {
+          reason = `Your routine is missing ${missing.join(" and ")} — ${missing.includes("sunscreen") ? "SPF is the single highest-leverage item" : "worth adding"}.`;
+        }
       }
       if (personal.skinType) {
         body += ` ${SKIN_TYPE_ADDON[personal.skinType]}`;
       }
+      const note = skinConcernNote(personal.concerns, skin);
+      if (note) body += ` ${note}`;
     }
 
     if (rule.id === "sleep-hydration" && personal.sleep) {

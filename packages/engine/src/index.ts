@@ -273,6 +273,8 @@ export type {
   ProfileMetricResult,
 } from "./profile";
 export { CANONICAL_VERTS } from "./landmarks/canonical";
+export { readSkin, skinDisks, skinSummary } from "./skin";
+export type { SkinDisk, SkinRead } from "./skin";
 export { regionalResiduals } from "./procrustes";
 export {
   coerceMatrix16,

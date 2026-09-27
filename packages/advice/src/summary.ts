@@ -74,6 +74,22 @@ const MEANINGS: Record<string, { good: string; weak: string }> = {
     good: "your brows sit close to the eyes, which is counted as ideal",
     weak: "there's a large gap between your brows and eyes",
   },
+  totalFaceRatio: {
+    good: "your full face height and width are in proportion",
+    weak: "your full face height-to-width sits outside the usual band (the hairline is estimated)",
+  },
+  eyebrowTilt: {
+    good: "your eyebrow arch fits the range for the sex you selected",
+    weak: "your eyebrow arch sits outside the range for the sex you selected — brow height itself is scored separately, and low brows stay ideal",
+  },
+  lipFullness: {
+    good: "your lip fullness fits the range for the sex you selected",
+    weak: "your lip fullness sits outside the range for the sex you selected",
+  },
+  earProtrusion: {
+    good: "your ears sit close to the cheek width in this mesh estimate",
+    weak: "your ears read wider than the cheekbones — the mesh only approximates the ear",
+  },
 };
 
 const TIER_OPENERS: Record<string, string> = {

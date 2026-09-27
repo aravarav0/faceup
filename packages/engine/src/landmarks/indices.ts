@@ -58,6 +58,12 @@ export const R_CHEILION = 61;
 export const L_CHEILION = 291;
 export const R_TRAGION = 234;
 export const L_TRAGION = 454;
+/** Nasal sidewall, not the ala. */
+export const R_NOSE_BRIDGE = 193;
+export const L_NOSE_BRIDGE = 417;
+/** Cupid's bow peaks. Index 0 is the central dip. */
+export const R_CUPID = 37;
+export const L_CUPID = 267;
 
 // Brows: chains from FACEMESH_*_EYEBROW, medial → lateral order not required.
 export const R_BROW_SUP = [70, 63, 105, 66, 107] as const;

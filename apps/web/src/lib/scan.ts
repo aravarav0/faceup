@@ -4,10 +4,12 @@ import type { FaceLandmarkerResult } from "@mediapipe/tasks-vision";
 import {
   analyze,
   coerceMatrix16,
+  readSkin,
   type Gate,
   type ScanInput,
   type ScanResult,
   type Sex,
+  type SkinRead,
 } from "@freeharmony/engine";
 import { getLandmarker } from "./landmarker";
 
@@ -51,6 +53,8 @@ export interface ScanOutcome {
   /** Everything needed to re-run analyze() later (Adjust Points, sex change) —
    *  minus the pixel buffer, which is rebuilt from `photo` on demand. */
   input: StoredInput | null;
+  /** Color read from the original frame. Later re-runs reuse this instead of the JPEG. */
+  skin: SkinRead | null;
 }
 
 export interface StoredInput {
@@ -104,7 +108,7 @@ export async function runScan(
       bandProfile: "faceharmony-parity",
       sex,
     };
-    return { result: gateFail, photo, input: null };
+    return { result: gateFail, photo, input: null, skin: null };
   }
 
   const ctx = frame.canvas.getContext("2d", { willReadFrequently: true })!;
@@ -130,6 +134,7 @@ export async function runScan(
   };
 
   const result = analyze(input);
+  const skin = result.ok ? readSkin(input, result.gates) : null;
   // Field-calibration breadcrumbs (harmless in prod, invaluable in bug reports).
   if (result.frame) {
     console.info(
@@ -150,6 +155,7 @@ export async function runScan(
   return {
     result,
     photo,
+    skin,
     input: {
       landmarks: input.landmarks,
       mirrored: frame.mirrored,

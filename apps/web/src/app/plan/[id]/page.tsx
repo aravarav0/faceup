@@ -26,7 +26,7 @@ export default function PlanPage({ params }: { params: Promise<{ id: string }> }
     const s = getScan(id) ?? null;
     setScan(s);
     if (s?.result.ok) {
-      setPlan(generatePlan(s.result, personalContext(loadProfile())));
+      setPlan(generatePlan(s.result, personalContext(loadProfile()), s.skin));
     }
   }, [id]);
 

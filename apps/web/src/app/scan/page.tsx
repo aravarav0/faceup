@@ -107,7 +107,7 @@ export default function ScanPage() {
       await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
       try {
         const profile = loadProfile();
-        const { result, photo, input } = await runScan(
+        const { result, photo, input, skin } = await runScan(
           { canvas, mirrored: false },
           profile.sex,
           { force },
@@ -121,11 +121,18 @@ export default function ScanPage() {
           return;
         }
         const id = newScanId();
-        saveScan({ id, createdAt: Date.now(), result, photo, input: input ?? undefined });
+        saveScan({
+          id,
+          createdAt: Date.now(),
+          result,
+          photo,
+          input: input ?? undefined,
+          skin: skin ?? undefined,
+        });
         stopCamera();
         lastCanvasRef.current = null;
         // The math is done — now stage the reveal.
-        setStatus({ kind: "sequence", outcome: { result, photo, input }, id });
+        setStatus({ kind: "sequence", outcome: { result, photo, input, skin }, id });
       } catch (err) {
         const raw = err instanceof Error ? err.message : "unknown error";
         setStatus({

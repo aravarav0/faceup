@@ -5,6 +5,7 @@ import type {
   ProfileMetricResult,
   ScanResult,
   Sex,
+  SkinRead,
 } from "@freeharmony/engine";
 import { applyLowBrowIdeal } from "@freeharmony/engine";
 import type { StoredInput } from "./scan";
@@ -60,6 +61,8 @@ export interface StoredScan {
     report?: import("./ai/schema").DeepReport;
     summary?: import("./ai/schema").DeepReport;
   };
+  /** Color read from the original frame. Re-runs keep this instead of reading the saved JPEG. */
+  skin?: SkinRead;
   /** Side-profile capture: contour-anchor analysis, separate from the mesh. */
   side?: {
     photo: string;

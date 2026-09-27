@@ -47,17 +47,26 @@ interface StepDef {
   note?: string;
 }
 
+/** Answers that actually change the generated plan. The rest can be skipped. */
+const PLAN_KEYS = new Set<keyof Profile>([
+  "skinType",
+  "skincare",
+  "diet",
+  "sleep",
+  "activity",
+  "concerns",
+]);
+
 const STEPS: StepDef[] = [
   {
     key: "sex",
-    headline: "How should we score you?",
+    headline: "Male or female?",
     kind: "single-card",
     options: [
-      { value: "masculine", label: "Masculine", sub: "Masculine reference ranges", icon: "▵" },
-      { value: "feminine", label: "Feminine", sub: "Feminine reference ranges", icon: "▿" },
-      { value: "neutral", label: "Skip", sub: "Union of both — costs you nothing", icon: "◇" },
+      { value: "masculine", label: "Male", sub: "Masculine reference ranges", icon: "▵" },
+      { value: "feminine", label: "Female", sub: "Feminine reference ranges", icon: "▿" },
     ],
-    note: "A few metrics (jaw width, brows) have different reference ranges by presentation.",
+    note: "Jaw width, brows, and a few other metrics use different reference ranges. This is the answer that changes your score.",
   },
   {
     key: "ageRange",
@@ -207,20 +216,40 @@ export default function WelcomePage() {
     });
   };
 
-  const canNext =
-    !current ||
-    current.optional ||
-    (current.kind === "multi-grid"
-      ? ((valueOf(current) as string[] | undefined)?.length ?? 0) > 0
-      : valueOf(current) !== undefined);
+  const hasAnswer = (def: StepDef): boolean => {
+    const v = valueOf(def);
+    if (def.key === "sex") return v === "masculine" || v === "feminine";
+    if (def.kind === "multi-grid") return ((v as string[] | undefined)?.length ?? 0) > 0;
+    return v !== undefined;
+  };
+
+  // Sex changes the score, so it is required. Every other answer only tunes the plan.
+  const skippable = !!current && current.key !== "sex";
+
+  const canNext = !current || current.optional || hasAnswer(current);
+
+  const finish = (p: Profile) => {
+    saveProfile({ ...p, onboarded: true });
+    router.replace("/");
+  };
 
   const next = () => {
     if (step < STEPS.length - 1) {
       setStep(step + 1);
       return;
     }
-    saveProfile({ ...profile, onboarded: true });
-    router.replace("/");
+    finish(profile);
+  };
+
+  const skip = () => {
+    if (!current || current.key === "sex") return;
+    const cleared = { ...profile, [current.key]: undefined };
+    setProfile(cleared);
+    if (step < STEPS.length - 1) {
+      setStep(step + 1);
+      return;
+    }
+    finish(cleared);
   };
 
   // ---- intro slides ----
@@ -375,10 +404,23 @@ export default function WelcomePage() {
           {step === STEPS.length - 1 ? "Finish" : "Next"}
         </button>
       </div>
+      {skippable && (
+        <button
+          type="button"
+          onClick={skip}
+          className="mt-3 py-2 text-center text-sm text-ink-2 hover:text-ink"
+        >
+          {step === STEPS.length - 1 ? "Skip and finish" : "Skip"}
+        </button>
+      )}
       <p className="pt-3 text-center text-xs text-ink-3">
         {profile.ageRange === "<18" && def.key === "ageRange"
           ? "Your face is still developing — numbers at your age move on their own. Treat all of this lightly."
-          : "Answers personalize your plan and never leave this device."}
+          : skippable
+            ? PLAN_KEYS.has(def.key)
+              ? "Optional. Answering this tunes your plan, and it stays on this device."
+              : "Optional. This stays on this device."
+            : "Pick one to continue. This choice stays on this device."}
       </p>
     </main>
   );
